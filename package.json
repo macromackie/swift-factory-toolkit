@@ -1,0 +1,31 @@
+{
+  "name": "@macromackie/swift-factory-toolkit",
+  "version": "0.1.0",
+  "description": "Owned local stacks, simulator evidence and explicit iOS distribution stages",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/macromackie/swift-factory-toolkit.git"
+  },
+  "bin": {
+    "swift-factory": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "helpers",
+    ".agents/skills",
+    ".contracts",
+    "README.md"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/cli.js && pnpm test",
+    "prepare": "node scripts/build.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.28.0"
+}

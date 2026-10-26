@@ -1,0 +1,16 @@
+[tools]
+"github:macromackie/tenet" = "0.10.0"
+node = "22.23.2"
+pnpm = "10.28.0"
+
+[tasks.check]
+depends = ["check:contracts"]
+env = { PATH = "{{ tools.node.path }}/bin:{{ env.PATH }}" }
+run = "pnpm check"
+
+[tasks."check:contracts"]
+run = "tenet validate"
+
+[tasks.build]
+env = { PATH = "{{ tools.node.path }}/bin:{{ env.PATH }}" }
+run = "pnpm build"
