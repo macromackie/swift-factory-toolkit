@@ -5,28 +5,38 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { loadManifest } from "../src/manifest.js";
-import { artifact, readJSON, sourceIdentity, writeJSON } from "../src/evidence.js";
-import { exportArchive } from "../src/ios.js";
-import { alive } from "../src/process.js";
-import { readiness, startStack, stopStack, waitReady } from "../src/stack.js";
+import type { TestContext } from "node:test";
+import type { Manifest } from "../src/types.js";
+import { requireStack } from "../dist/manifest.js";
+import { loadManifest } from "../dist/manifest.js";
+import { artifact, readReceipt, sourceIdentity, writeJSON } from "../dist/evidence.js";
+import { exportArchive } from "../dist/ios/export.js";
+import { alive } from "../dist/process.js";
+import { readiness, startStack, stopStack, waitReady } from "../dist/stack.js";
 
-async function availablePort() {
+async function availablePort(): Promise<number> {
   const server = createServer();
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = server.address().port;
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const port = address.port;
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    }),
+  );
   return port;
 }
 
-async function fixture(t, app, status = 200) {
+async function fixture(t: TestContext, app: string, status = 200): Promise<Manifest> {
   const root = await mkdtemp(join(tmpdir(), "factory-test-"));
   t.after(async () => {
     const receipts = await readdir(join(root, ".local/stack")).catch(() => []);
     for (const receipt of receipts) {
       const path = join(root, ".local/stack", receipt, "receipt.json");
-      const record = await readJSON(path).catch(() => null);
-      if (record?.owned) await stopStack(path);
+      const record = await readReceipt(path).catch(() => null);
+      if (record?.stage === "stack" && record.owned) await stopStack(path);
     }
     await rm(root, { recursive: true, force: true });
   });
@@ -56,13 +66,16 @@ createServer((request, response) => { response.statusCode = ${status}; response.
   return loadManifest(path);
 }
 
-test("stopping a reused stack leaves the owner and a second app running", async (t) => {
+await test("stopping a reused stack leaves the owner and a second app running", async (t) => {
   const first = await fixture(t, "first-app");
   const second = await fixture(t, "second-app");
   const owner = await startStack(first);
-  const otherOwner = await startStack(second);
+  await startStack(second);
   const reused = await startStack(first);
-  assert.equal((await readJSON(reused)).owned, false);
+  const reusedReceipt = await readReceipt(reused);
+  assert.equal(reusedReceipt.stage, "stack");
+  assert.ok("owned" in reusedReceipt);
+  assert.equal(reusedReceipt.owned, false);
   await stopStack(reused);
   assert.ok(await readiness(first, await sourceIdentity(first.root)));
   await stopStack(owner);
@@ -70,40 +83,66 @@ test("stopping a reused stack leaves the owner and a second app running", async 
   assert.ok(await readiness(second, await sourceIdentity(second.root)));
 });
 
-test("stale backend identity is rejected without stopping the running owner", async (t) => {
+await test("stale backend identity is rejected without stopping the running owner", async (t) => {
   const manifest = await fixture(t, "identity-app");
   const source = await sourceIdentity(manifest.root);
-  const owner = await startStack(manifest);
+  await startStack(manifest);
   await writeFile(join(manifest.root, "changed.txt"), "new source");
   await assert.rejects(startStack(manifest), /different build/);
   assert.ok(await readiness(manifest, source));
 });
 
-test("readiness has a deadline and receipts do not copy process credentials", async (t) => {
+await test("readiness has a deadline and receipts do not copy process credentials", async (t) => {
   const manifest = await fixture(t, "bounded-app");
-  manifest.stack.timeoutSeconds = 0.02;
+  requireStack(manifest).timeoutSeconds = 0.02;
   await assert.rejects(waitReady(manifest, await sourceIdentity(manifest.root)), /timed out/);
-  manifest.stack.timeoutSeconds = 3;
-  process.env.FACTORY_TEST_SECRET = "sentinel-do-not-record";
+  requireStack(manifest).timeoutSeconds = 3;
+  process.env["FACTORY_TEST_SECRET"] = "sentinel-do-not-record";
   t.after(() => {
     delete process.env.FACTORY_TEST_SECRET;
   });
   const receipt = await startStack(manifest);
   assert.ok(!(await readFile(receipt, "utf8")).includes(process.env.FACTORY_TEST_SECRET));
   const unavailable = await fixture(t, "unavailable-app", 503);
-  unavailable.stack.timeoutSeconds = 1;
+  requireStack(unavailable).timeoutSeconds = 1;
   await assert.rejects(startStack(unavailable), /timed out/);
-  await assert.rejects(fetch(unavailable.stack.ready.url), /fetch failed/);
+  await assert.rejects(fetch(requireStack(unavailable).ready.url), /fetch failed/);
 });
 
-test("export rejects a changed archive or a receipt for another app before invoking Xcode", async (t) => {
+await test("export rejects a changed archive or a receipt for another app before invoking Xcode", async (t) => {
   const manifest = await fixture(t, "artifact-app");
-  manifest.ios = { release: { environment: "production" } };
+  manifest.ios = {
+    cwd: manifest.root,
+    project: "App.xcodeproj",
+    scheme: "App",
+    bundleID: "com.example.app",
+    appName: "App",
+    jobs: 4,
+    release: {
+      environment: "production",
+      configuration: "Release",
+      exportOptions: "Export.plist",
+      expectedInfo: {},
+    },
+  };
   const path = join(manifest.root, "archive");
   await writeFile(path, "original artifact");
   const receiptPath = join(manifest.root, "receipt.json");
   const receipt = {
     schema: 1,
+    toolkit: "0.2.0",
+    source: await sourceIdentity(manifest.root),
+    tools: { xcode: "fixture", host: "fixture" },
+    identity: {
+      bundleID: "com.example.app",
+      version: "1.0",
+      build: "1",
+      minimumOS: "26.0",
+      executable: "App",
+      sdk: "iphoneos",
+      xcodeBuild: "fixture",
+    },
+    symbols: await artifact(path),
     stage: "archive",
     status: "succeeded",
     app: manifest.app,
@@ -118,7 +157,7 @@ test("export rejects a changed archive or a receipt for another app before invok
   await assert.rejects(exportArchive(manifest, receiptPath), /Receipt does not match/);
 });
 
-test("a process awaiting reaping still exists when its existence probe returns EPERM", (t) => {
+await test("a process awaiting reaping still exists when its existence probe returns EPERM", (t) => {
   t.mock.method(process, "kill", () => {
     throw Object.assign(new Error("Permission denied during process teardown"), { code: "EPERM" });
   });

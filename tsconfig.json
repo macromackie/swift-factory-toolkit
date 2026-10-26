@@ -1,0 +1,9 @@
+{
+  "extends": "./config/tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM"],
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]
+}

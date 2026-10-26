@@ -1,18 +1,18 @@
 name: Checks
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
   portable:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-15]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.23.2
-      - run: corepack enable && corepack prepare pnpm@10.28.0 --activate
+      - uses: jdx/mise-action@v5
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check && pnpm build
+      - run: mise run check
       - run: node dist/cli.js --help
       - run: pnpm pack

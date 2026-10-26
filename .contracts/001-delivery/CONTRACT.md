@@ -1,31 +1,30 @@
 ---
 name: delivery
-message: Bound local resources and identify every artifact before reuse or distribution.
+message: Bound owned resources and preserve another application's processes and simulator state.
+paths: ["src/**/*.ts", "test/**/*.ts", "test/**/*.js", "helpers/**/*"]
 ---
 
-# Resource and artifact ownership
+# Resource lifecycle
 
 Commands must be safe to run from independent application repositories on one machine.
 
 ## Rules
 
-- Reuse a local backend only when its app, environment, protocol and source build identity match the manifest.
-- Give each started stack a receipt, an owning supervisor and a deadline. Signal only a process whose receipt token
-  still appears in its command identity. A reused stack never grants teardown ownership.
-- Lease a simulator UUID before changing its device-global settings. Attempt to restore every changed setting before
-  releasing the lease, including failed tests. Record a failed restoration as failed evidence.
-- Bind reusable test builds to source, manifest, application, runner and xctestrun hashes. Reject changed artifacts.
-- Keep archive, export and upload separate. Export preserves the archive's version and build and cannot upload.
-- Keep raw recordings and explicit edit intervals. Retained footage plays at real speed; preserve source hashes.
-- Keep credentials in the invoking application's environment. Receipts contain identities and hashes, never environment
-  dumps, command credentials or source contents. Treat build logs, screenshots and recordings as private evidence.
+Reuse a backend only when its app, environment, protocol and source identity match the validated manifest.
+Give each started stack a typed receipt, owning supervisor and deadline. Signal only a process whose receipt token
+still appears in its command identity. A reused stack grants no teardown ownership.
+
+Lease a simulator UUID before changing device-global settings. Attempt to restore every changed setting before
+releasing the lease, including after a failure or interruption. Record a failed restoration as failed evidence.
+Keep resource acquisition, ownership transfer and cleanup visible in the same lifecycle.
+
+Keep application commands, credentials, scenarios, endpoints and release decisions in the consuming repository.
+The CLI validates input and selects an operation; execution modules own effects and cleanup. Keep credentials in
+the invoking process environment and omit them from receipts and diagnostic command rendering.
 
 ## Checks
 
-`test/ownership.test.js` exercises independent stacks, reused ownership, stale identity, bounded readiness and changed
-archives. It also checks that inherited credentials are absent from receipts.
-
-Before distributing a new toolkit version, run a real application snapshot with fresh and reused build receipts,
-inspect the screenshots and accessibility attachments, and check simulator settings after a deliberately failed run.
-Run an authorized archive/export and inspect its app identity and receipt. Upload is a separately authorized operation;
-an upload command's success does not establish App Review submission or customer release.
+Run `test/ownership.test.ts` through `pnpm check` for independent stacks, reuse, stale identity, bounded readiness and redaction.
+Before a toolkit release, run a real application capture and an interrupted capture. Confirm exact owned process
+cleanup and simulator restoration, and preserve any preexisting service. A successful Linux check does not establish
+Apple simulator behavior.

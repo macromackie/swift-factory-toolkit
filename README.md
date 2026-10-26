@@ -9,12 +9,12 @@ Xcode, mise and the application's tests keep their existing jobs.
 Install the versioned package tarball from the GitHub release and commit your package-manager lockfile:
 
 ```sh
-pnpm add -D https://github.com/macromackie/swift-factory-toolkit/releases/download/v0.1.0/macromackie-swift-factory-toolkit-0.1.0.tgz
+pnpm add -D https://github.com/macromackie/swift-factory-toolkit/releases/download/v0.2.0/macromackie-swift-factory-toolkit-0.2.0.tgz
 pnpm exec swift-factory --help
 ```
 
 For a source checkout, use the pinned Node 22.23.2 and pnpm 10.28.0 with `mise exec -- pnpm install --frozen-lockfile`.
-`pnpm build` copies the dependency-free JavaScript CLI into `dist`; `pnpm pack` includes the runnable CLI, native helpers,
+`pnpm build` compiles the strict TypeScript CLI into `dist`; `pnpm pack` includes the runnable CLI, native helpers,
 recording skill and contracts. A Git dependency also runs `prepare`. Node 22 or later runs the portable commands.
 
 iOS commands require macOS, full Xcode selected through `DEVELOPER_DIR` or `xcode-select`, and the simulator runtime
@@ -25,7 +25,8 @@ requires `uv`; its Python script pins `imageio-ffmpeg` and prefers an existing `
 
 Save the manifest in the application repository. `root` is relative to the manifest; `artifacts`, stack `cwd` and iOS
 `cwd` are relative to root. Xcode project, export options and inspection commands run relative to the iOS directory.
-Commands are argument arrays, never shell expressions. Keep secrets out of the manifest.
+Commands are argument arrays, never shell expressions. Keep secrets out of the manifest. The toolkit validates the
+manifest at startup, resolves its paths once, and validates saved receipts and tool output before using them.
 
 ```json
 {
@@ -165,8 +166,29 @@ Capture defaults to one visible iPhone Mirroring window. An optional fourth argu
 bundle ID. It records without audio or cursor, refuses existing files and bounds capture to 1–1,200 seconds. The editor
 keeps raw sources, records hashes and explicit cuts, and refuses existing output. Inspect every resulting cut and screen.
 
+## Shared checks
+
+The package exports three optional development configurations:
+
+- `@macromackie/swift-factory-toolkit/config/eslint`: `strictTypeScript({ root, files?, ignores? })`.
+- `@macromackie/swift-factory-toolkit/config/tsconfig.json`: strict compiler settings.
+- `@macromackie/swift-factory-toolkit/config/dependencies`: `dependencyRules({ tsconfig?, forbidden?, externalModules? })`.
+
+Consumers declare the ESLint, typescript-eslint and dependency-cruiser tools they use as development dependencies.
+These optional peers are not needed to run the CLI. Extend the compiler configuration and override platform-specific
+module resolution or libraries in the consuming package. Keep package ownership and extra dependency rules there.
+The dependency preset resolves package exports and counts type-only imports when checking cycles. Declare runtime-only
+built-ins by exact name, such as `externalModules: ["cloudflare:workers"]`; undeclared unresolved imports still fail.
+
+TypeScript 7 ships a native compiler without the API that type-aware ESLint requires. This checkout follows
+[Microsoft’s side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0):
+`@typescript/native` aliases compiler 7.0.2; `typescript` provides the 6.0 API for typescript-eslint. The build and
+`typecheck` command invoke the native compiler explicitly. This keeps the application compiler at 7 while lint
+uses its supported API.
+
 ## Verify
 
-`pnpm check` tests owned cleanup, concurrent app isolation, stale backend rejection, bounded readiness, receipt redaction
-and changed archive rejection without requiring Xcode. Real simulator, signing, export and recording checks depend on
+`pnpm check` compiles the CLI, checks formatting and types, runs type-aware lint and resolved import checks, and tests
+owned cleanup, concurrent app isolation, stale backend rejection, bounded readiness, receipt redaction and changed
+archive rejection without requiring Xcode. Tests exercise the compiled modules used by the installed CLI. Real simulator, signing, export and recording checks depend on
 the consuming application's environment; passing portable tests does not establish those behaviors on a device.
