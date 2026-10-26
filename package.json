@@ -1,6 +1,6 @@
 {
   "name": "@macromackie/swift-factory-toolkit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Owned local stacks, simulator evidence and explicit iOS distribution stages",
   "license": "MIT",
   "repository": {
@@ -15,14 +15,61 @@
     "helpers",
     ".agents/skills",
     ".contracts",
-    "README.md"
+    "README.md",
+    "config",
+    ".tenet.lock",
+    ".agents/guidance-adoption.md"
   ],
   "type": "module",
+  "exports": {
+    "./config/eslint": "./config/eslint.mjs",
+    "./config/tsconfig.json": "./config/tsconfig.json",
+    "./config/dependencies": "./config/dependencies.mjs"
+  },
   "scripts": {
-    "build": "node scripts/build.js",
-    "test": "node --test test/*.test.js",
-    "check": "node --check src/cli.js && pnpm test",
-    "prepare": "node scripts/build.js"
+    "build": "tsx scripts/build.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "node node_modules/@typescript/native/bin/tsc --noEmit",
+    "lint": "eslint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "check": "pnpm build && pnpm format:check && pnpm typecheck && pnpm lint && pnpm check:dependencies && pnpm test",
+    "prepare": "tsx scripts/build.ts",
+    "check:dependencies": "depcruise --config dependency-cruiser.config.mjs src"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.19.17",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "dependency-cruiser": "18.7.0",
+    "eslint": "10.13.0",
+    "oxfmt": "0.70.0",
+    "tsx": "4.23.1",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "8.72.0"
+  },
+  "peerDependencies": {
+    "@eslint/js": "^10.0.1",
+    "dependency-cruiser": "^18.7.0",
+    "eslint": "^10.13.0",
+    "typescript-eslint": "^8.72.0"
+  },
+  "peerDependenciesMeta": {
+    "@eslint/js": {
+      "optional": true
+    },
+    "eslint": {
+      "optional": true
+    },
+    "typescript-eslint": {
+      "optional": true
+    },
+    "dependency-cruiser": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=22"

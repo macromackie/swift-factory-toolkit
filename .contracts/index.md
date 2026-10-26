@@ -1,6 +1,12 @@
-# Toolkit contracts
+# Swift Factory Toolkit contracts
 
-- [Delivery](001-delivery/CONTRACT.md): process ownership, backend identity, simulator leases and artifact provenance.
+- [Resource lifecycle](001-delivery/CONTRACT.md): stack ownership, simulator leases and interruption cleanup.
+- [Artifact provenance](002-artifacts/CONTRACT.md): validated stage receipts, hashes and separate release steps.
+- [Compiler strictness](004-code-typescript-compiler-strictness/CONTRACT.md): strict source, scripts and tests.
+- [Shared ownership](005-code-ownership-and-boundaries/CONTRACT.md): application configuration and reusable execution boundaries.
+- [Contract maintenance](006-contract-maintenance/CONTRACT.md): scoped requirements and update provenance.
 
-Version 0.1.0 applies to the CLI, packaged native helpers and its manifests. Applications retain their own scenario
-and release requirements. Run `pnpm check` for the portable checks; follow the manual checks before an Apple release.
+Run `mise run check:contracts` for document validation and the root `mise run check` for required code checks.
+Shared contracts are pinned in [`.tenet.lock`](../.tenet.lock). Their `Local adaptations` sections define repository
+scope; [the adoption record](../.agents/guidance-adoption.md) explains the reviewed source and retained differences.
+Model assessments are separate from deterministic checks and must report provider failures or incomplete scope.
