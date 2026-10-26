@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile, mkdir, unlink } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,7 @@ import type { Manifest } from "../src/types.js";
 import { requireStack } from "../dist/manifest.js";
 import { loadManifest } from "../dist/manifest.js";
 import { artifact, readReceipt, sourceIdentity, writeJSON } from "../dist/evidence.js";
+import { buildForSnapshot } from "../dist/ios/build.js";
 import { exportArchive } from "../dist/ios/export.js";
 import { alive } from "../dist/process.js";
 import { readiness, startStack, stopStack, waitReady } from "../dist/stack.js";
@@ -162,4 +163,82 @@ await test("a process awaiting reaping still exists when its existence probe ret
     throw Object.assign(new Error("Permission denied during process teardown"), { code: "EPERM" });
   });
   assert.equal(alive(-12345), true);
+});
+
+await test("fresh captures select the current SDK and architectures while retaining other builds", async (t) => {
+  const manifest = await fixture(t, "sdk-app");
+  const directory = join(manifest.root, ".local", "build");
+  const bin = join(manifest.root, ".local", "bin");
+  await mkdir(directory, { recursive: true });
+  await mkdir(bin);
+  const app = join(directory, "App.app");
+  const runner = join(directory, "Runner.app");
+  await mkdir(app);
+  await mkdir(runner);
+  await writeJSON(join(app, "Info.plist"), {
+    CFBundleIdentifier: "com.example.app",
+    CFBundleShortVersionString: "1.0",
+    CFBundleVersion: "1",
+    MinimumOSVersion: "26.0",
+    CFBundleExecutable: "App",
+    DTSDKName: "iphonesimulator27.1",
+    DTXcodeBuild: "fixture",
+  });
+  await writeJSON(join(bin, "settings.json"), [
+    {
+      target: "App",
+      buildSettings: {
+        TARGET_BUILD_DIR: directory,
+        FULL_PRODUCT_NAME: "App.app",
+        BUILD_DIR: directory,
+        SDK_NAME: "iphonesimulator27.1",
+        ARCHS: "arm64 x86_64",
+      },
+    },
+  ]);
+  await writeFile(
+    join(bin, "xcodebuild"),
+    `#!${process.execPath}\nimport{readFileSync}from'node:fs';if(process.argv.includes('-showBuildSettings'))process.stdout.write(readFileSync(new URL('./settings.json',import.meta.url)));\n`,
+    { mode: 0o700 },
+  );
+  await writeFile(
+    join(bin, "plutil"),
+    `#!${process.execPath}\nimport{readFileSync}from'node:fs';try{process.stdout.write(readFileSync(process.argv.at(-1)));}catch{process.exitCode=1;}\n`,
+    { mode: 0o700 },
+  );
+  const expected = join(directory, "App_iphonesimulator27.1-arm64-x86_64.xctestrun");
+  const oldArchitecture = join(directory, "App_iphonesimulator27.1-arm64.xctestrun");
+  const oldSDK = join(directory, "App_iphonesimulator26.2-arm64-x86_64.xctestrun");
+  await writeJSON(expected, { AppUITests: { TestHostPath: runner, UITargetAppPath: app } });
+  await writeJSON(oldArchitecture, { stale: true });
+  await writeJSON(oldSDK, { stale: true });
+  manifest.ios = {
+    cwd: manifest.root,
+    project: "App.xcodeproj",
+    scheme: "App",
+    appName: "App",
+    bundleID: "com.example.app",
+    jobs: 4,
+    snapshot: {
+      target: "AppUITests",
+      test: "AppUITests/Capture/test",
+      configuration: "Debug",
+      buildSettings: [],
+      expectedInfo: {},
+      attachmentPrefix: "snapshot-",
+      scenarios: {},
+    },
+  };
+  const previousPath = process.env["PATH"];
+  process.env["PATH"] = `${bin}:${previousPath ?? ""}`;
+  t.after(() => {
+    if (previousPath === undefined) delete process.env["PATH"];
+    else process.env["PATH"] = previousPath;
+  });
+  const retained = await Promise.all([oldArchitecture, oldSDK].map(artifact));
+  const receipt = await buildForSnapshot(manifest, directory, "fixture-device");
+  assert.equal(receipt.xctestrun.path, expected);
+  assert.deepEqual(await Promise.all([oldArchitecture, oldSDK].map(artifact)), retained);
+  await unlink(expected);
+  await assert.rejects(buildForSnapshot(manifest, directory, "fixture-device"));
 });

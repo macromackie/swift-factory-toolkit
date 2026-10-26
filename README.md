@@ -129,8 +129,9 @@ Start the matching backend first. The app's UI test must attach PNGs named `snap
 `snapshot.attachmentPrefix`). It can attach accessibility data under its own names. Captures retain the xcresult,
 attachments, gallery, tool and device inventory, logs and receipt. Failed tests retain their evidence and exit nonzero.
 
-The fresh build uses normal Xcode DerivedData and requires one matching scheme xctestrun. It never chooses the newest
-ambiguous file. The build receipt ties current source/configuration to the app, test runner and xctestrun hashes; reuse
+The fresh build uses normal Xcode DerivedData and selects the scheme xctestrun matching the current Xcode
+`SDK_NAME` and `ARCHS` build settings. Other SDK or architecture builds stay in place; the toolkit never chooses
+the newest file. The build receipt ties current source/configuration to the app, test runner and xctestrun hashes; reuse
 checks each before launching. Toolkit builds for the same project are serialized. Avoid changing that project's outputs
 with an external Xcode build during capture. The simulator lease is shared across toolkit applications on that host.
 Appearance and text size are restored before releasing it; the app's own account state is controlled by its scenario.

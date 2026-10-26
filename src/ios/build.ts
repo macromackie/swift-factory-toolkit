@@ -1,5 +1,4 @@
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 import { artifact, sourceIdentity, version, writeJSON } from "../evidence.js";
 import { requireIOS, requireSnapshot } from "../manifest.js";
@@ -43,6 +42,8 @@ const buildSettingsSchema = z.array(
       TARGET_BUILD_DIR: z.string(),
       FULL_PRODUCT_NAME: z.string(),
       BUILD_DIR: z.string(),
+      SDK_NAME: z.string().min(1),
+      ARCHS: z.string().min(1),
     }),
   }),
 );
@@ -75,23 +76,18 @@ export async function buildForSnapshot(
   )?.buildSettings;
   if (!selected) throw new Error("App target is absent from Xcode build settings");
   const appPath = join(selected.TARGET_BUILD_DIR, selected.FULL_PRODUCT_NAME);
-  const candidates = (await readdir(selected.BUILD_DIR)).filter(
-    (name) => name.startsWith(`${ios.scheme}_`) && name.endsWith(".xctestrun"),
-  );
-  const candidate = candidates[0];
-  if (candidates.length !== 1 || !candidate)
-    throw new Error(
-      `Expected one ${ios.scheme} xctestrun in ${selected.BUILD_DIR}; remove only obsolete task-owned builds explicitly`,
-    );
-  const xctestrunPath = join(selected.BUILD_DIR, candidate);
+  const architectures = selected.ARCHS.trim().split(/\s+/);
+  const name = `${ios.scheme}_${selected.SDK_NAME}-${architectures.join("-")}.xctestrun`;
+  const xctestrunPath = join(selected.BUILD_DIR, name);
   const configuration = object(
     absoluteTestPaths(await plist(xctestrunPath), selected.BUILD_DIR),
     "xctestrun",
   );
-  const testRunnerPath = text(
-    testTarget(configuration, snapshot.target)["TestHostPath"],
-    "xctestrun test runner path",
-  );
+  const target = testTarget(configuration, snapshot.target);
+  if (resolve(text(target["UITargetAppPath"], "UITargetAppPath")) !== resolve(appPath)) {
+    throw new Error("xctestrun targets a different app artifact");
+  }
+  const testRunnerPath = text(target["TestHostPath"], "xctestrun test runner path");
   const receipt: BuildReceipt = {
     schema: 1,
     toolkit: version,
